@@ -19,7 +19,7 @@ Get-ChildItem -LiteralPath (Join-Path $repo 'share') -File | ForEach-Object {
 }
 
 $helperOut = Join-Path $dist 'LumiHelper.exe'
-Invoke-Csc -Output $helperOut -Sources @((Join-Path $repo 'src\helper\LumiHelper.cs')) -References @('System.Web.Extensions.dll', 'System.Net.Http.dll')
+Invoke-Csc -Output $helperOut -Sources @((Join-Path $repo 'src\helper\LumiHelper.cs')) -References @('System.Web.Extensions.dll')
 
 $cmd = Join-Path $dist 'Install Lumi.cmd'
 $lines = @(

@@ -179,7 +179,11 @@ function Send-NativeMessage {
     $process.WaitForExit(5000) | Out-Null
     $memory.Position = 0
     $buf = New-Object byte[] 4
-    if ($memory.Read($buf, 0, 4) -ne 4) { throw 'The helper answer was incomplete.' }
+    if ($memory.Read($buf, 0, 4) -ne 4) {
+        $errText = ''
+        try { $errText = $process.StandardError.ReadToEnd() } catch {}
+        throw ('The helper answer was incomplete. ' + $errText)
+    }
     $count = [System.BitConverter]::ToInt32($buf, 0)
     $body = New-Object byte[] $count
     $got = 0

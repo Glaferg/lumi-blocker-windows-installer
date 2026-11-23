@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net.Http;
+using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Web.Script.Serialization;
@@ -151,17 +151,21 @@ class Program
         body["messages"] = messages;
         body["stream"] = false;
         string payload = ser.Serialize(body);
-        System.Net.ServicePointManager.Expect100Continue = false;
-        using (var client = new HttpClient())
+        ServicePointManager.Expect100Continue = false;
+        var request = (HttpWebRequest)WebRequest.Create(endpoint);
+        request.Method = "POST";
+        request.ContentType = "application/json";
+        request.Timeout = timeoutSeconds * 1000;
+        byte[] payloadBytes = Encoding.UTF8.GetBytes(payload);
+        request.ContentLength = payloadBytes.Length;
+        using (var requestStream = request.GetRequestStream())
         {
-            client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-            var http = new StringContent(payload, Encoding.UTF8, "application/json");
-            var response = client.PostAsync(endpoint, http).Result;
-            string text = response.Content.ReadAsStringAsync().Result;
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new IOException("model-http");
-            }
+            requestStream.Write(payloadBytes, 0, payloadBytes.Length);
+        }
+        using (var response = (HttpWebResponse)request.GetResponse())
+        using (var reader = new StreamReader(response.GetResponseStream()))
+        {
+            string text = reader.ReadToEnd();
             var parsed = ser.Deserialize<Dictionary<string, object>>(text);
             if (parsed == null || !parsed.ContainsKey("message") || parsed["message"] == null)
             {
