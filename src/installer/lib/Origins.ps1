@@ -30,22 +30,29 @@ function Set-UserOllamaOrigins {
 }
 
 function Send-UserEnvironmentNotice {
-    if (-not ('LumiNative.EnvironmentNotice' -as [type])) {
-        Add-Type -Namespace LumiNative -Name EnvironmentNotice -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+    # SMTO_ABORTIFHUNG is 2. The call itself waits at most 300 ms, and it runs
+    # in its own process so a stuck window cannot stall or crash setup.
+    $runner = Join-Path $env:TEMP 'lumi-env-notice.ps1'
+    $script = @'
+$ErrorActionPreference = "Stop"
+Add-Type -Namespace LumiNative -Name EnvironmentNotice -MemberDefinition @"
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
 public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);
-public static void Notify() {
-    System.UIntPtr result;
-    SendMessageTimeout((System.IntPtr)0xffff, 0x001A, System.UIntPtr.Zero, "Environment", 2, 300, out result);
-}
+"@
+$noticeResult = [UIntPtr]::Zero
+[LumiNative.EnvironmentNotice]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, "Environment", 2, 300, [ref]$noticeResult) | Out-Null
 '@
-    }
-    $thread = New-Object System.Threading.Thread ([System.Threading.ThreadStart] {
-        try { [LumiNative.EnvironmentNotice]::Notify() } catch {}
-    })
-    $thread.IsBackground = $true
-    $thread.Start()
-    if (-not $thread.Join(800)) {
-        Write-LumiLog 'environment notice left running'
+    try {
+        [System.IO.File]::WriteAllText($runner, $script)
+        $exe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $notice = Start-Process -FilePath $exe -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $runner) -WindowStyle Hidden -PassThru
+        if (-not $notice.WaitForExit(1000)) {
+            try { Stop-Process -Id $notice.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Write-LumiLog 'environment notice stopped'
+        } else {
+            Write-LumiLog ('environment notice ' + $notice.ExitCode)
+        }
+    } catch {
+        Write-LumiLog 'environment notice skipped'
     }
 }

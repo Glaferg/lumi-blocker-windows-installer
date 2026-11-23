@@ -25,8 +25,8 @@ Assert-True (-not $paletteText.Contains('#E05A5A')) 'Red is still in the install
 Assert-True (-not $paletteText.Contains('#000000')) 'Jet black is still in the installer screens.'
 Assert-True (-not $paletteText.Contains('#FF0000')) 'Bright red is still in the installer screens.'
 $notice = [System.IO.File]::ReadAllText((Join-Path $repo 'src\installer\lib\Origins.ps1'))
-Assert-True ($notice.Contains('SMTO') -or $notice.Contains(', 2, 300,')) 'The environment notice is not the short aborting kind.'
-Assert-True ($notice.Contains('IsBackground = $true')) 'The environment notice can stall setup.'
+Assert-True ($notice.Contains(', 2, 300,')) 'The environment notice is not the short aborting kind.'
+Assert-True ($notice.Contains('WaitForExit(1000)')) 'The environment notice can stall setup.'
 Assert-True ([int]$product.completionHoldSeconds -eq 4) 'Completion hold is not 4 seconds.'
 Assert-True ([int]$product.completionFadeSeconds -eq 2) 'Completion fade is not 2 seconds.'
 Assert-True ($product.readyText -eq "Close this tab and let's get started!") 'Ready text changed.'
