@@ -24,6 +24,18 @@ function Assert-True {
     if (-not $Condition) { throw $Message }
 }
 
+function Test-SameFile {
+    param([string]$Left, [string]$Right)
+    if (-not $Left -or -not $Right) { return $false }
+    try {
+        $a = (Get-Item -LiteralPath $Left).FullName
+        $b = (Get-Item -LiteralPath $Right).FullName
+        return ($a -eq $b)
+    } catch {
+        return ($Left -eq $Right)
+    }
+}
+
 function Assert-CleanOutput {
     param([string]$Text)
     foreach ($token in @('VERYSILENT', 'Exception', 'registry', 'native messaging', 'HRESULT', 'OLLAMA_ORIGINS', 'LUMI:', 'stack trace')) {
@@ -328,13 +340,13 @@ try {
         Assert-True (Test-Path -LiteralPath (Join-Path $root $relative)) ('Missing ' + $relative)
     }
     $manifest = [System.IO.File]::ReadAllText((Join-Path $root 'native-host\lumi_focus.json')) | ConvertFrom-Json
-    $helperPath = [System.IO.Path]::GetFullPath((Join-Path $root 'LumiHelper.exe'))
+    $helperPath = Join-Path $root 'LumiHelper.exe'
     Assert-True ($manifest.name -eq 'lumi_focus') 'Helper name was not registered.'
     Assert-True ($manifest.type -eq 'stdio') 'Helper type was not registered.'
-    Assert-True ($manifest.path -eq $helperPath) 'Helper path was not registered.'
+    Assert-True (Test-SameFile $manifest.path $helperPath) ('Helper path was not registered. manifest=' + $manifest.path)
     Assert-True (@($manifest.allowed_extensions) -contains 'lumi-focus@test') 'Lumi Focus was not allowed to talk to the helper.'
     $registered = (Get-Item -LiteralPath $hostKey).GetValue('')
-    Assert-True ($registered -eq [System.IO.Path]::GetFullPath((Join-Path $root 'native-host\lumi_focus.json'))) 'Firefox was not pointed at the helper note.'
+    Assert-True (Test-SameFile $registered (Join-Path $root 'native-host\lumi_focus.json')) ('Firefox was not pointed at the helper note. registered=' + $registered)
     Assert-True (-not (Test-Path -LiteralPath 'HKLM:\SOFTWARE\Mozilla\NativeMessagingHosts\lumi_focus')) 'Setup wrote a machine-wide Firefox key.'
     Assert-True (-not (Test-Path -LiteralPath 'HKLM:\SOFTWARE\WOW6432Node\Mozilla\NativeMessagingHosts\lumi_focus')) 'Setup wrote a 32-bit machine-wide Firefox key.'
     $programs = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
