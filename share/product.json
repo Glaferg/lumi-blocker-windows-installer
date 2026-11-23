@@ -1,0 +1,28 @@
+{
+  "version": "1.0.0",
+  "productName": "Lumi",
+  "extensionName": "Lumi Focus",
+  "nativeHostName": "lumi_focus",
+  "installFolderName": "Lumi",
+  "model": "gemma3:4b",
+  "ollamaSetupUrl": "https://github.com/ollama/ollama/releases/download/v0.40.17/OllamaSetup.exe",
+  "ollamaOrigin": "moz-extension://*",
+  "ollamaBaseUrl": "http://127.0.0.1:11434",
+  "minFirefoxMajor": 115,
+  "completionHoldSeconds": 4,
+  "completionFadeSeconds": 2,
+  "readyText": "Close this tab and let's get started!",
+  "steps": {
+    "ollamaApp": "Downloading Ollama App...",
+    "model": "Downloading Model",
+    "backend": "Starting Application Backend"
+  },
+  "colors": {
+    "background": "#1E222A",
+    "cream": "#E5E9F0",
+    "sage": "#A3BE8C",
+    "accent": "#6A8CAF",
+    "readyText": "#D5DBE4",
+    "error": "#E05A5A"
+  }
+}

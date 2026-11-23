@@ -1,0 +1,35 @@
+name: Windows installer
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: windows-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-uninstall:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build installer
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File build\Build-Installer.ps1
+
+      - name: Install, verify, and uninstall
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File tests\Test-Installer.ps1
+
+      - name: Upload screenshots, logs, and setup zip
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            tests/out/
+            dist/LumiSetup-win.zip
+          if-no-files-found: ignore

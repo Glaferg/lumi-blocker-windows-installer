@@ -1,0 +1,11 @@
+{
+  "commands": {
+    "reopen-last-closed-tab": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+S",
+        "windows": "Ctrl+Alt+S"
+      },
+      "description": "Reopen the last tab Lumi closed"
+    }
+  }
+}
