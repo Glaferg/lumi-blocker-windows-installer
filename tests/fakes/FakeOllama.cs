@@ -1,6 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 
 class Program
 {
@@ -81,9 +85,105 @@ class Program
         {
             string origin = Environment.GetEnvironmentVariable("OLLAMA_ORIGINS") ?? "";
             File.WriteAllText(Path.Combine(dir, "backend-started.txt"), origin);
-            while (true) System.Threading.Thread.Sleep(1000);
+            Thread worker = new Thread(Serve);
+            worker.IsBackground = true;
+            worker.Start();
+            while (true) Thread.Sleep(1000);
         }
         Console.Error.WriteLine("unknown");
         return 4;
+    }
+
+    static void Serve()
+    {
+        TcpListener listener = new TcpListener(IPAddress.Loopback, 11434);
+        listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        bool started = false;
+        for (int i = 0; i < 20; i++)
+        {
+            try
+            {
+                listener.Start();
+                started = true;
+                break;
+            }
+            catch
+            {
+                Thread.Sleep(250);
+            }
+        }
+        if (!started) return;
+        while (true)
+        {
+            TcpClient client = null;
+            try
+            {
+                client = listener.AcceptTcpClient();
+                NetworkStream stream = client.GetStream();
+                stream.ReadTimeout = 3000;
+                MemoryStream raw = new MemoryStream();
+                byte[] buf = new byte[2048];
+                string header = "";
+                while (header.IndexOf("\r\n\r\n") < 0)
+                {
+                    int n = stream.Read(buf, 0, buf.Length);
+                    if (n <= 0) break;
+                    raw.Write(buf, 0, n);
+                    header = Encoding.ASCII.GetString(raw.ToArray());
+                    if (header.Length > 65536) break;
+                }
+                string requestOrigin = "";
+                string[] lines = header.Split(new string[] { "\r\n" }, StringSplitOptions.None);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    if (lines[i].StartsWith("Origin:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        requestOrigin = lines[i].Substring(7).Trim();
+                    }
+                }
+                string allowed = Environment.GetEnvironmentVariable("OLLAMA_ORIGINS") ?? "";
+                bool ok = OriginAllowed(requestOrigin, allowed);
+                string body = ok ? "{\"version\":\"fake\"}" : "{\"error\":\"origin\"}";
+                byte[] payload = Encoding.UTF8.GetBytes(body);
+                StringBuilder response = new StringBuilder();
+                response.Append(ok ? "HTTP/1.1 200 OK\r\n" : "HTTP/1.1 403 Forbidden\r\n");
+                if (ok) response.Append("Access-Control-Allow-Origin: ").Append(requestOrigin).Append("\r\n");
+                response.Append("Content-Length: ").Append(payload.Length).Append("\r\n");
+                response.Append("Connection: close\r\n\r\n");
+                byte[] prefix = Encoding.ASCII.GetBytes(response.ToString());
+                stream.Write(prefix, 0, prefix.Length);
+                stream.Write(payload, 0, payload.Length);
+                stream.Flush();
+            }
+            catch
+            {
+            }
+            finally
+            {
+                if (client != null) client.Close();
+            }
+        }
+    }
+
+    static bool OriginAllowed(string origin, string allowed)
+    {
+        if (string.IsNullOrEmpty(origin) || string.IsNullOrEmpty(allowed)) return false;
+        string[] parts = allowed.Split(',');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            string pattern = parts[i].Trim();
+            if (pattern.Length == 0) continue;
+            if (pattern == "*") return true;
+            if (pattern.EndsWith("*"))
+            {
+                string prefix = pattern.Substring(0, pattern.Length - 1);
+                if (origin.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            else if (string.Equals(pattern, origin, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }

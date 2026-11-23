@@ -19,6 +19,14 @@ Assert-True ($product.colors.background -eq '#1E222A') 'Background color changed
 Assert-True ($product.colors.cream -eq '#E5E9F0') 'Cream color changed.'
 Assert-True ($product.colors.sage -eq '#A3BE8C') 'Sage color changed.'
 Assert-True ($product.colors.accent -eq '#6A8CAF') 'Accent color changed.'
+Assert-True (-not $product.colors.error) 'A harsh color is still listed.'
+$paletteText = [System.IO.File]::ReadAllText((Join-Path $repo 'share\product.json')) + [System.IO.File]::ReadAllText((Join-Path $repo 'src\installer\lib\Ui.ps1'))
+Assert-True (-not $paletteText.Contains('#E05A5A')) 'Red is still in the installer screens.'
+Assert-True (-not $paletteText.Contains('#000000')) 'Jet black is still in the installer screens.'
+Assert-True (-not $paletteText.Contains('#FF0000')) 'Bright red is still in the installer screens.'
+$notice = [System.IO.File]::ReadAllText((Join-Path $repo 'src\installer\lib\Origins.ps1'))
+Assert-True ($notice.Contains('SMTO') -or $notice.Contains(', 2, 300,')) 'The environment notice is not the short aborting kind.'
+Assert-True ($notice.Contains('IsBackground = $true')) 'The environment notice can stall setup.'
 Assert-True ([int]$product.completionHoldSeconds -eq 4) 'Completion hold is not 4 seconds.'
 Assert-True ([int]$product.completionFadeSeconds -eq 2) 'Completion fade is not 2 seconds.'
 Assert-True ($product.readyText -eq "Close this tab and let's get started!") 'Ready text changed.'

@@ -26,4 +26,26 @@ function Set-UserOllamaOrigins {
         [Environment]::SetEnvironmentVariable('OLLAMA_ORIGINS', $Value, 'User')
     }
     $env:OLLAMA_ORIGINS = $Value
+    Send-UserEnvironmentNotice
+}
+
+function Send-UserEnvironmentNotice {
+    if (-not ('LumiNative.EnvironmentNotice' -as [type])) {
+        Add-Type -Namespace LumiNative -Name EnvironmentNotice -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);
+public static void Notify() {
+    System.UIntPtr result;
+    SendMessageTimeout((System.IntPtr)0xffff, 0x001A, System.UIntPtr.Zero, "Environment", 2, 300, out result);
+}
+'@
+    }
+    $thread = New-Object System.Threading.Thread ([System.Threading.ThreadStart] {
+        try { [LumiNative.EnvironmentNotice]::Notify() } catch {}
+    })
+    $thread.IsBackground = $true
+    $thread.Start()
+    if (-not $thread.Join(800)) {
+        Write-LumiLog 'environment notice left running'
+    }
 }

@@ -199,6 +199,31 @@ function Send-NativeMessage {
     }
 }
 
+function Assert-GentleBitmap {
+    param([string]$Path)
+    Add-Type -AssemblyName System.Drawing
+    $bmp = [System.Drawing.Bitmap]::FromFile($Path)
+    try {
+        $corner = $bmp.GetPixel(8, 8)
+        if ($corner.R -ne 30 -or $corner.G -ne 34 -or $corner.B -ne 42) {
+            throw ('Background drifted in ' + $Path)
+        }
+        for ($y = 0; $y -lt $bmp.Height; $y += 4) {
+            for ($x = 0; $x -lt $bmp.Width; $x += 4) {
+                $color = $bmp.GetPixel($x, $y)
+                if ($color.A -gt 0 -and $color.R -eq 0 -and $color.G -eq 0 -and $color.B -eq 0) {
+                    throw ('Jet black in ' + $Path)
+                }
+                if ($color.R -gt 200 -and $color.G -lt 90 -and $color.B -lt 90) {
+                    throw ('Harsh red in ' + $Path)
+                }
+            }
+        }
+    } finally {
+        $bmp.Dispose()
+    }
+}
+
 function Assert-Pixel {
     param([string]$Path, [int]$X, [int]$Y, [int]$Red, [int]$Green, [int]$Blue, [string]$Message)
     Add-Type -AssemblyName System.Drawing
@@ -290,9 +315,9 @@ try {
     )
     Assert-True ($unverified.ExitCode -eq 1) 'An unverified download was accepted.'
     Assert-CleanOutput $unverified.Stdout
-    Assert-True ($unverified.Stdout.Contains('could not verify the download')) ('Unverified text was wrong. out=' + $unverified.Stdout + ' err=' + $unverified.Stderr)
+    Assert-True ($unverified.Stdout.Contains('Run setup again.')) ('Unverified text was wrong. out=' + $unverified.Stdout + ' err=' + $unverified.Stderr)
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $unverifiedOllama 'setup-count.txt'))) 'The unverified download was started.'
-    Assert-Pixel -Path (Join-Path $unverifiedShots 'error.png') -X $layout.CharacterX -Y $layout.CharacterY -Red 224 -Green 90 -Blue 90 -Message 'Error icon'
+    Assert-Pixel -Path (Join-Path $unverifiedShots 'error.png') -X $layout.CharacterX -Y $layout.CharacterY -Red 163 -Green 190 -Blue 140 -Message 'Gentle Lumi'
     $unverifiedRemove = Invoke-LumiChild -InstallerArgs @('-Silent', '-Uninstall', '-InstallRoot', $unverifiedRoot)
     Assert-True ($unverifiedRemove.ExitCode -eq 0) 'Remove failed after an unverified download.'
 
@@ -308,12 +333,12 @@ try {
     ) -Environment @{ LUMI_FAKE_PULL_EXIT = '3' }
     Assert-True ($modelRun.ExitCode -eq 1) 'A failed model download looked successful.'
     Assert-CleanOutput $modelRun.Stdout
-    Assert-True ($modelRun.Stdout.Contains('Balanced mode will be used for now.')) 'Model problem text was wrong.'
+    Assert-True ($modelRun.Stdout.Contains('Balanced mode will carry you for now.')) 'Model problem text was wrong.'
     $modelSettings = [System.IO.File]::ReadAllText((Join-Path $modelRoot 'settings.json')) | ConvertFrom-Json
     Assert-True ($modelSettings.mode -eq 'balanced') 'Failed Thorough setup did not move to Balanced.'
     $modelState = Read-LumiJsonFile -Path (Join-Path $modelRoot 'install-state.json')
     if ($modelState.ContainsKey('backendPid')) { $cleanupPids.Add([int]$modelState['backendPid']) }
-    Assert-Pixel -Path (Join-Path $modelShots 'error.png') -X $layout.CharacterX -Y $layout.CharacterY -Red 224 -Green 90 -Blue 90 -Message 'Model error icon'
+    Assert-Pixel -Path (Join-Path $modelShots 'error.png') -X $layout.CharacterX -Y $layout.CharacterY -Red 163 -Green 190 -Blue 140 -Message 'Gentle Lumi'
     $modelLog = [System.IO.File]::ReadAllText((Join-Path $modelRoot 'logs\install.log'))
     Assert-True ($modelLog.Contains('Downloading Model')) 'Model download step was skipped.'
     Assert-True ($modelRun.Stdout -notmatch 'fake pull') 'Model error text included program output.'
@@ -389,6 +414,7 @@ try {
         Start-Sleep -Milliseconds 200
     }
     Assert-True $started 'The background program did not see the Firefox permission.'
+    Assert-True (Test-OllamaCorsAllowed -BaseUrl 'http://127.0.0.1:11434') 'Firefox was not allowed to reach the model.'
     $state = Read-LumiJsonFile -Path (Join-Path $root 'install-state.json')
     $cleanupPids.Add([int]$state['backendPid'])
 
@@ -434,7 +460,8 @@ try {
     $rerunLog = [System.IO.File]::ReadAllText((Join-Path $root 'logs\install.log'))
     $lastRun = $rerunLog.Substring($rerunLog.LastIndexOf('RUN BEGIN'))
     Assert-True ($lastRun.Contains('Model is already on this computer')) 'A second run downloaded the model again.'
-    Assert-True ($lastRun.Contains('Application backend is already running')) 'A second run started the background program again.'
+    Assert-True ($lastRun.Contains('STEP Starting Application Backend')) 'A second run did not restart the background program.'
+    Assert-True (Test-OllamaCorsAllowed -BaseUrl 'http://127.0.0.1:11434') 'Firefox was not allowed to reach the model after a restart.'
     Assert-True ($lastRun.Contains('Ollama is already on this computer')) 'A second run downloaded Ollama again.'
     $kept = Send-NativeMessage -Exe $helperPath -Json '{"action":"getSettings"}'
     Assert-True ($kept.mode -eq 'light') 'Helper forgot the chosen mode.'
@@ -450,7 +477,11 @@ try {
     foreach ($name in @('01-consent.png', '02-downloading-ollama.png', '03-downloading-model.png', '04-starting-backend.png', '05-complete.png', '06-fade.png', '07-ready.png')) {
         $file = Join-Path $shots $name
         Assert-True ((Test-Path -LiteralPath $file) -and ((Get-Item -LiteralPath $file).Length -gt 1500)) ('Screenshot missing: ' + $name)
+        Assert-GentleBitmap -Path $file
     }
+    Assert-GentleBitmap -Path (Join-Path $unverifiedShots 'error.png')
+    Assert-GentleBitmap -Path (Join-Path $modelShots 'error.png')
+    Assert-GentleBitmap -Path (Join-Path $unverifiedShots 'error-fade.png')
 
     $remove = Invoke-LumiChild -InstallerArgs @('-Silent', '-Uninstall', '-RemoveOllama', '-InstallRoot', $root, '-ResultPath', (Join-Path $work 'remove.json'))
     Assert-True ($remove.ExitCode -eq 0) 'Remove failed.'

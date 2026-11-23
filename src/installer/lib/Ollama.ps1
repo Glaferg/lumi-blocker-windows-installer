@@ -74,6 +74,62 @@ function Invoke-LoggedProcess {
     return [int]$proc.ExitCode
 }
 
+function Stop-OllamaGracefully {
+    param([string]$ExePath)
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($ExePath)
+    if (-not $name) { return }
+    $running = @(Get-Process -Name $name -ErrorAction SilentlyContinue)
+    if ($running.Count -eq 0) { return }
+    foreach ($proc in $running) {
+        try { [void]$proc.CloseMainWindow() } catch {}
+    }
+    $deadline = (Get-Date).AddSeconds(2)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Get-Process -Name $name -ErrorAction SilentlyContinue)) { return }
+        Start-Sleep -Milliseconds 200
+    }
+    foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+        try { Stop-Process -Id $proc.Id -ErrorAction SilentlyContinue } catch {}
+    }
+    Start-Sleep -Milliseconds 300
+    foreach ($proc in @(Get-Process -Name $name -ErrorAction SilentlyContinue)) {
+        try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+    }
+}
+
+function Start-OllamaBackend {
+    param([string]$ExePath)
+    Stop-OllamaGracefully -ExePath $ExePath
+    $backend = Start-Process -FilePath $ExePath -ArgumentList @('app') -PassThru -WindowStyle Hidden
+    return [int]$backend.Id
+}
+
+function Test-OllamaCorsAllowed {
+    param([string]$BaseUrl)
+    if (-not $BaseUrl) { $BaseUrl = 'http://127.0.0.1:11434' }
+    $url = $BaseUrl.TrimEnd('/') + '/api/version'
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline) {
+        $response = $null
+        try {
+            $request = [System.Net.WebRequest]::Create($url)
+            $request.Method = 'GET'
+            $request.Timeout = 2000
+            $request.Proxy = $null
+            $request.Headers.Add('Origin', 'moz-extension://test')
+            $response = $request.GetResponse()
+            $allow = [string]$response.Headers['Access-Control-Allow-Origin']
+            Write-LumiLog ('cors ' + $allow)
+            if ($allow -eq 'moz-extension://test' -or $allow -eq '*') { return $true }
+        } catch {
+            Start-Sleep -Milliseconds 250
+        } finally {
+            if ($response) { $response.Close() }
+        }
+    }
+    return $false
+}
+
 function Test-OllamaModelPresent {
     param(
         [string]$OllamaExe,

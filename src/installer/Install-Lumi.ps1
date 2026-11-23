@@ -137,6 +137,34 @@ function Get-FriendlyMessage {
     }
 }
 
+function Show-LumiTrouble {
+    param([string]$Message, [string]$ShotName)
+    $fading = @{
+        Phase = 'error'
+        Message = $Message
+        ErrorOpacity = 0.45
+    }
+    $settled = @{
+        Phase = 'error'
+        Message = $Message
+        ErrorOpacity = 1
+    }
+    Save-LumiShot -Name ($ShotName + '-fade') -Frame $fading
+    Save-LumiShot -Name $ShotName -Frame $settled
+    if ($Silent -or -not $script:LumiForm) { return }
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($watch.Elapsed.TotalSeconds -lt 1 -and -not $script:UiState.Closed) {
+        $amount = $watch.Elapsed.TotalSeconds
+        if ($amount -gt 1) { $amount = 1 }
+        Update-LumiForm -Frame @{ Phase = 'error'; Message = $Message; ErrorOpacity = $amount }
+        Start-Sleep -Milliseconds 40
+    }
+    if (-not $script:UiState.Closed) {
+        Update-LumiForm -Frame $settled
+        Wait-LumiFormClose
+    }
+}
+
 function Test-BackendAlive {
     param($ProcessId)
     $idValue = 0
@@ -323,36 +351,16 @@ function Invoke-LumiSetup {
             }
         }
 
-        $backendStarted = $false
-        if ($state.ContainsKey('backendPid') -and (Test-BackendAlive $state['backendPid'])) {
-            Set-LumiStep -Text $messages.StepBackendReady -Detail $detail -ShotName '04-starting-backend'
-        } else {
-            $existing = Get-Process -Name 'ollama' -ErrorAction SilentlyContinue
-            if ($existing -and -not $state['ollamaInstalledByLumi']) {
-                $warnings.Add($messages.BackendAlreadyOpen)
-                Set-LumiStep -Text $messages.StepBackendReady -Detail $messages.BackendAlreadyOpen -ShotName '04-starting-backend'
-            } else {
-                Set-LumiStep -Text $messages.StepBackend -Detail $detail -ShotName '04-starting-backend'
-                $backend = Start-Process -FilePath $ollamaExe -ArgumentList @('app') -PassThru -WindowStyle Hidden
-                $state['backendPid'] = [int]$backend.Id
-                Write-LumiLog ('backend ' + $backend.Id)
-            }
-        }
+        Set-LumiStep -Text $messages.StepBackend -Detail $detail -ShotName '04-starting-backend'
+        $state['backendPid'] = Start-OllamaBackend -ExePath $ollamaExe
+        Write-LumiLog ('backend ' + $state['backendPid'])
+        $cors = Test-OllamaCorsAllowed -BaseUrl ([string]$product.ollamaBaseUrl)
+        $state['corsAllowed'] = [bool]$cors
+        if (-not $cors) { $warnings.Add($messages.BackendAlreadyOpen) }
         Write-LumiJsonFile -Object $state -Path $statePath
 
         if ($modelFailed) {
-            $errorFrame = @{
-                Phase = 'error'
-                Message = $messages.ModelFailed
-                HappyOpacity = 0
-                ReadyOpacity = 0
-                TextOpacity = 0
-            }
-            Save-LumiShot -Name 'error' -Frame $errorFrame
-            if (-not $Silent -and $script:LumiForm) {
-                Update-LumiForm -Frame $errorFrame
-                Wait-LumiFormClose
-            }
+            Show-LumiTrouble -Message $messages.ModelFailed -ShotName 'error'
             Publish-LumiResult -Ok $false -Code 1 -Message $messages.ModelFailed -Warnings @($warnings.ToArray())
             return 1
         }
@@ -393,18 +401,7 @@ function Invoke-LumiSetup {
         Write-LumiLog $raw
         if ($raw -like 'LUMI:*') { $kind = $raw.Substring(5) }
         $message = Get-FriendlyMessage -Kind $kind -Messages $messages
-        $errorFrame = @{
-            Phase = 'error'
-            Message = $message
-            HappyOpacity = 0
-            ReadyOpacity = 0
-            TextOpacity = 0
-        }
-        Save-LumiShot -Name 'error' -Frame $errorFrame
-        if (-not $Silent -and $script:LumiForm) {
-            Update-LumiForm -Frame $errorFrame
-            Wait-LumiFormClose
-        }
+        Show-LumiTrouble -Message $message -ShotName 'error'
         Publish-LumiResult -Ok $false -Code 1 -Message $message -Warnings @()
         return 1
     }

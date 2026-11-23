@@ -44,8 +44,8 @@ function Draw-LumiGlyph {
         $eyeY = $CenterY - [int]($Radius * 0.12)
         $Graphics.FillEllipse($eye, $CenterX - [int]($Radius * 0.38) - $eyeR, $eyeY - $eyeR, $eyeR * 2, $eyeR * 2)
         $Graphics.FillEllipse($eye, $CenterX + [int]($Radius * 0.38) - $eyeR, $eyeY - $eyeR, $eyeR * 2, $eyeR * 2)
-        if ($Mood -eq 'error') {
-            $Graphics.DrawArc($pen, $CenterX - [int]($Radius * 0.34), $CenterY + [int]($Radius * 0.18), [int]($Radius * 0.68), [int]($Radius * 0.42), 200, 140)
+        if ($Mood -eq 'gentle') {
+            $Graphics.DrawArc($pen, $CenterX - [int]($Radius * 0.22), $CenterY + [int]($Radius * 0.1), [int]($Radius * 0.44), [int]($Radius * 0.28), 15, 150)
         } elseif ($Mood -eq 'ready') {
             $Graphics.DrawArc($pen, $CenterX - [int]($Radius * 0.26), $CenterY + [int]($Radius * 0.08), [int]($Radius * 0.52), [int]($Radius * 0.32), 15, 150)
         } else {
@@ -115,7 +115,6 @@ function Paint-LumiFrame {
     $sage = ConvertTo-LumiColor -Hex $colors.sage
     $accent = ConvertTo-LumiColor -Hex $colors.accent
     $readyColor = ConvertTo-LumiColor -Hex $colors.readyText
-    $error = ConvertTo-LumiColor -Hex $colors.error
     $Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $Graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
     $Graphics.Clear($bg)
@@ -165,9 +164,13 @@ function Paint-LumiFrame {
             return
         }
         if ($phase -eq 'error') {
-            Draw-LumiGlyph -Graphics $Graphics -CenterX $layout.CharacterX -CenterY $layout.CharacterY -Radius $layout.CharacterRadius -Fill $error -Ink $bg -Mood 'error'
-            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Message) -Font $bodyFont -Color $cream -X 100 -Y 360 -Width 760 -Height 120 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
-            Draw-LumiString -Graphics $Graphics -Text $messages.ErrorHint -Font $smallFont -Color $sage -X 120 -Y 490 -Width 720 -Height 40 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
+            $fadeIn = 1.0
+            if ($Frame.ContainsKey('ErrorOpacity')) { $fadeIn = [double]$Frame.ErrorOpacity }
+            if ($fadeIn -lt 0) { $fadeIn = 0 }
+            if ($fadeIn -gt 1) { $fadeIn = 1 }
+            $soft = ConvertTo-LumiColor -Hex $colors.sage -Opacity $fadeIn
+            Draw-LumiGlyph -Graphics $Graphics -CenterX $layout.CharacterX -CenterY $layout.CharacterY -Radius $layout.CharacterRadius -Fill $soft -Ink $bg -Mood 'gentle'
+            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Message) -Font $bodyFont -Color $cream -X 80 -Y 350 -Width 800 -Height 120 -Opacity $fadeIn -Alignment ([System.Drawing.StringAlignment]::Center)
             return
         }
 
