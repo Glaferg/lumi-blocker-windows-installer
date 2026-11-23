@@ -154,45 +154,49 @@ function Invoke-LumiChild {
 
 function Send-NativeMessage {
     param([string]$Exe, [string]$Json)
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Exe
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardInput = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.CreateNoWindow = $true
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
-    [void]$process.Start()
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
-    $len = [System.BitConverter]::GetBytes([int]$bytes.Length)
-    $process.StandardInput.BaseStream.Write($len, 0, 4)
-    $process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
-    $process.StandardInput.BaseStream.Flush()
-    $process.StandardInput.Close()
-    $memory = New-Object System.IO.MemoryStream
-    $copy = $process.StandardOutput.BaseStream.CopyToAsync($memory)
-    if (-not $copy.Wait(15000)) {
-        try { $process.Kill() } catch {}
-        throw 'The helper did not answer.'
-    }
-    $process.WaitForExit(5000) | Out-Null
-    $memory.Position = 0
-    $buf = New-Object byte[] 4
-    if ($memory.Read($buf, 0, 4) -ne 4) {
+    $dir = Join-Path $env:TEMP ('lumi-pipe-' + [Guid]::NewGuid().ToString('n'))
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    try {
+        $inFile = Join-Path $dir 'in.bin'
+        $outFile = Join-Path $dir 'out.bin'
+        $errFile = Join-Path $dir 'err.txt'
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
+        $len = [System.BitConverter]::GetBytes([int]$bytes.Length)
+        $all = New-Object byte[] (4 + $bytes.Length)
+        [System.Buffer]::BlockCopy($len, 0, $all, 0, 4)
+        [System.Buffer]::BlockCopy($bytes, 0, $all, 4, $bytes.Length)
+        [System.IO.File]::WriteAllBytes($inFile, $all)
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $env:ComSpec
+        $psi.Arguments = '/d /s /c ""' + $Exe + '" < "' + $inFile + '" > "' + $outFile + '" 2> "' + $errFile + '""'
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $process = [System.Diagnostics.Process]::Start($psi)
+        if (-not $process.WaitForExit(15000)) {
+            try { $process.Kill() } catch {}
+            throw 'The helper did not answer.'
+        }
         $errText = ''
-        try { $errText = $process.StandardError.ReadToEnd() } catch {}
-        throw ('The helper answer was incomplete. ' + $errText)
+        if (Test-Path -LiteralPath $errFile) { $errText = [System.IO.File]::ReadAllText($errFile) }
+        $helperLog = Join-Path (Split-Path -Parent $Exe) 'logs\helper.log'
+        $logText = ''
+        if (Test-Path -LiteralPath $helperLog) { $logText = [System.IO.File]::ReadAllText($helperLog) }
+        if (-not (Test-Path -LiteralPath $outFile)) {
+            throw ('The helper answer was incomplete. exit=' + $process.ExitCode + ' err=' + $errText + ' log=' + $logText)
+        }
+        $memory = [System.IO.File]::ReadAllBytes($outFile)
+        if ($memory.Length -lt 4) {
+            throw ('The helper answer was incomplete. bytes=' + $memory.Length + ' exit=' + $process.ExitCode + ' err=' + $errText + ' log=' + $logText)
+        }
+        $count = [System.BitConverter]::ToInt32($memory, 0)
+        if ($count -lt 2 -or $memory.Length -lt (4 + $count)) {
+            throw ('The helper answer was incomplete. count=' + $count + ' bytes=' + $memory.Length + ' exit=' + $process.ExitCode + ' err=' + $errText + ' log=' + $logText)
+        }
+        $text = [System.Text.Encoding]::UTF8.GetString($memory, 4, $count)
+        return ($text | ConvertFrom-Json)
+    } finally {
+        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
     }
-    $count = [System.BitConverter]::ToInt32($buf, 0)
-    $body = New-Object byte[] $count
-    $got = 0
-    while ($got -lt $count) {
-        $n = $memory.Read($body, $got, $count - $got)
-        if ($n -le 0) { throw 'The helper answer was incomplete.' }
-        $got += $n
-    }
-    return ([System.Text.Encoding]::UTF8.GetString($body) | ConvertFrom-Json)
 }
 
 function Assert-Pixel {
