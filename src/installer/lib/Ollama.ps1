@@ -8,6 +8,9 @@ function Save-RemoteFile {
     if (-not (Test-Path -LiteralPath $dir)) {
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
     }
+    if ($TimeoutMs -gt 20000 -and $Url -match '(?i)^https?://(127\.0\.0\.1|localhost)(:|/|$)') {
+        $TimeoutMs = 20000
+    }
     $attempts = 0
     $lastError = $null
     while ($attempts -lt 2) {

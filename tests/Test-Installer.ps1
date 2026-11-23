@@ -118,9 +118,10 @@ function Invoke-LumiChild {
     [void]$process.Start()
     $outTask = $process.StandardOutput.ReadToEndAsync()
     $errTask = $process.StandardError.ReadToEndAsync()
-    if (-not $process.WaitForExit(180000)) {
+    $finished = $process.WaitForExit(180000)
+    if (-not $finished) {
         try { $process.Kill() } catch {}
-        throw 'Setup did not finish.'
+        $process.WaitForExit(5000) | Out-Null
     }
     $outTask.Wait(10000) | Out-Null
     $errTask.Wait(10000) | Out-Null
@@ -132,6 +133,7 @@ function Invoke-LumiChild {
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
     $stamp = [DateTime]::UtcNow.ToString('HHmmssfff')
     [System.IO.File]::WriteAllText((Join-Path $logDir ($stamp + '-exit.txt')), ('exit ' + $process.ExitCode + "`r`n" + $psi.Arguments + "`r`n--- stdout ---`r`n" + $stdout + "`r`n--- stderr ---`r`n" + $stderr))
+    if (-not $finished) { throw 'Setup did not finish.' }
     return @{
         ExitCode = $process.ExitCode
         Stdout = $stdout

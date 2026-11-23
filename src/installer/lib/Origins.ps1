@@ -26,16 +26,4 @@ function Set-UserOllamaOrigins {
         [Environment]::SetEnvironmentVariable('OLLAMA_ORIGINS', $Value, 'User')
     }
     $env:OLLAMA_ORIGINS = $Value
-    try {
-        if (-not ('LumiNative.EnvironmentNotice' -as [type])) {
-            Add-Type -Namespace LumiNative -Name EnvironmentNotice -MemberDefinition @'
-[System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Auto)]
-public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.UIntPtr lpdwResult);
-'@
-        }
-        $result = [UIntPtr]::Zero
-        [LumiNative.EnvironmentNotice]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'Environment', 2, 2000, [ref]$result) | Out-Null
-    } catch {
-        Write-LumiLog 'environment notice skipped'
-    }
 }
