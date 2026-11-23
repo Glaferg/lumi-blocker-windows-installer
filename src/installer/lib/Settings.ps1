@@ -4,28 +4,7 @@ function Read-LumiJsonFile {
     $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
     $ser.MaxJsonLength = 1024 * 1024
     $text = [System.IO.File]::ReadAllText($Path)
-    return (ConvertTo-LumiSerializable ($ser.DeserializeObject($text)))
-}
-
-function ConvertTo-LumiSerializable {
-    param($Value)
-    if ($null -eq $Value) { return $null }
-    if ($Value -is [string] -or $Value -is [ValueType]) { return $Value }
-    if ($Value -is [System.Collections.IDictionary]) {
-        $dict = New-Object 'System.Collections.Generic.Dictionary[string,object]'
-        foreach ($key in @($Value.Keys)) {
-            $dict[[string]$key] = ConvertTo-LumiSerializable $Value[$key]
-        }
-        return $dict
-    }
-    if ($Value -is [System.Collections.IEnumerable]) {
-        $list = New-Object System.Collections.ArrayList
-        foreach ($item in $Value) {
-            [void]$list.Add((ConvertTo-LumiSerializable $item))
-        }
-        return $list
-    }
-    return [string]$Value
+    return ,$ser.DeserializeObject($text)
 }
 
 function Write-LumiJsonFile {
@@ -36,7 +15,7 @@ function Write-LumiJsonFile {
     Add-Type -AssemblyName System.Web.Extensions
     $ser = New-Object System.Web.Script.Serialization.JavaScriptSerializer
     $ser.MaxJsonLength = 1024 * 1024
-    $json = $ser.Serialize((ConvertTo-LumiSerializable $Object))
+    $json = $ser.Serialize($Object)
     $utf8 = New-Object System.Text.UTF8Encoding $false
     [System.IO.File]::WriteAllText($Path, $json, $utf8)
 }

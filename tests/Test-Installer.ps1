@@ -105,6 +105,9 @@ function Invoke-LumiChild {
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.CreateNoWindow = $true
+    if ($InstallerArgs -contains '-Silent') { $psi.EnvironmentVariables['LUMI_SILENT'] = '1' }
+    if ($InstallerArgs -contains '-AcceptConsent') { $psi.EnvironmentVariables['LUMI_ACCEPT'] = '1' }
+    if ($InstallerArgs -contains '-AllowUnsignedOllamaSetup') { $psi.EnvironmentVariables['LUMI_ALLOW_UNSIGNED'] = '1' }
     if ($Environment) {
         foreach ($key in @($Environment.Keys)) {
             $psi.EnvironmentVariables[$key] = [string]$Environment[$key]
@@ -115,11 +118,24 @@ function Invoke-LumiChild {
     [void]$process.Start()
     $outTask = $process.StandardOutput.ReadToEndAsync()
     $errTask = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
+    if (-not $process.WaitForExit(180000)) {
+        try { $process.Kill() } catch {}
+        throw 'Setup did not finish.'
+    }
+    $outTask.Wait(10000) | Out-Null
+    $errTask.Wait(10000) | Out-Null
+    $stdout = ''
+    $stderr = ''
+    if ($outTask.IsCompleted) { $stdout = $outTask.Result }
+    if ($errTask.IsCompleted) { $stderr = $errTask.Result }
+    $logDir = Join-Path $repo 'tests\out\logs'
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $stamp = [DateTime]::UtcNow.ToString('HHmmssfff')
+    [System.IO.File]::WriteAllText((Join-Path $logDir ($stamp + '-exit.txt')), ('exit ' + $process.ExitCode + "`r`n" + $psi.Arguments + "`r`n--- stdout ---`r`n" + $stdout + "`r`n--- stderr ---`r`n" + $stderr))
     return @{
         ExitCode = $process.ExitCode
-        Stdout = $outTask.Result
-        Stderr = $errTask.Result
+        Stdout = $stdout
+        Stderr = $stderr
     }
 }
 
@@ -235,7 +251,7 @@ try {
         '-Silent', '-InstallRoot', $declinedRoot, '-ResultPath', (Join-Path $work 'declined.json'),
         '-FirefoxExecutable', $common.FirefoxExecutable
     )
-    Assert-True ($declined.ExitCode -eq 3) 'Setup continued without a yes.'
+    Assert-True ($declined.ExitCode -eq 3) ('Setup continued without a yes. Exit ' + $declined.ExitCode + ' out=' + $declined.Stdout + ' err=' + $declined.Stderr)
     Assert-CleanOutput $declined.Stdout
     Assert-True ($declined.Stdout.Contains('Lumi was not installed.')) 'Decline text was wrong.'
     Assert-True (-not (Test-Path -LiteralPath $declinedRoot)) 'Setup created files after a no.'

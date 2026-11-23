@@ -16,6 +16,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($env:LUMI_SILENT -eq '1') { $Silent = $true }
+if ($env:LUMI_ACCEPT -eq '1') { $AcceptConsent = $true }
+if ($env:LUMI_ALLOW_UNSIGNED -eq '1') { $AllowUnsignedOllamaSetup = $true }
 $script:LumiHome = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 . (Join-Path $script:LumiHome 'lib\Log.ps1')
@@ -204,7 +207,12 @@ function Invoke-LumiSetup {
             return 3
         }
     } elseif (-not $AcceptConsent) {
-        Publish-LumiResult -Ok $false -Code 3 -Message $messages.Declined -Warnings @()
+        try {
+            Publish-LumiResult -Ok $false -Code 3 -Message $messages.Declined -Warnings @()
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.ToString())
+            [Console]::Out.WriteLine($messages.Declined)
+        }
         return 3
     }
 
@@ -405,10 +413,13 @@ function Invoke-LumiSetup {
 if ($MyInvocation.InvocationName -ne '.') {
     $code = 1
     try {
-        $code = Invoke-LumiSetup
+        $result = @(Invoke-LumiSetup)
+        if ($result.Count -gt 0) { $code = [int]$result[-1] }
     } catch {
+        [Console]::Error.WriteLine($_.Exception.ToString())
         [Console]::Out.WriteLine('Lumi could not finish. Close this window and run setup again.')
         $code = 1
     }
+    try { $host.SetShouldExit($code) } catch {}
     exit $code
 }
