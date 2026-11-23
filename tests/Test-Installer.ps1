@@ -45,11 +45,9 @@ function Start-LocalByteServer {
     [void]$pipe.AddScript({
         param($Server, $Body)
         while ($true) {
-            $wait = $Server.BeginAcceptTcpClient($null, $null)
-            if (-not $wait.AsyncWaitHandle.WaitOne(400)) { continue }
             $client = $null
-            try { $client = $Server.EndAcceptTcpClient($wait) } catch { break }
             try {
+                $client = $Server.AcceptTcpClient()
                 $stream = $client.GetStream()
                 $stream.ReadTimeout = 5000
                 $buf = New-Object byte[] 4096
@@ -80,6 +78,7 @@ function Start-LocalByteServer {
                 $stream.Write($Body, 0, $Body.Length)
                 $stream.Flush()
             } catch {
+                if (-not $client) { break }
             } finally {
                 if ($client) { $client.Close() }
             }
@@ -271,7 +270,7 @@ try {
     )
     Assert-True ($unverified.ExitCode -eq 1) 'An unverified download was accepted.'
     Assert-CleanOutput $unverified.Stdout
-    Assert-True ($unverified.Stdout.Contains('could not verify the download')) 'Unverified text was wrong.'
+    Assert-True ($unverified.Stdout.Contains('could not verify the download')) ('Unverified text was wrong. out=' + $unverified.Stdout + ' err=' + $unverified.Stderr)
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $unverifiedOllama 'setup-count.txt'))) 'The unverified download was started.'
     Assert-Pixel -Path (Join-Path $unverifiedShots 'error.png') -X $layout.CharacterX -Y $layout.CharacterY -Red 224 -Green 90 -Blue 90 -Message 'Error icon'
     $unverifiedRemove = Invoke-LumiChild -InstallerArgs @('-Silent', '-Uninstall', '-InstallRoot', $unverifiedRoot)
