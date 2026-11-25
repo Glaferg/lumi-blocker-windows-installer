@@ -472,13 +472,15 @@ function Test-OllamaModelPresent {
     $proc = Start-LumiHiddenProcess -FilePath $OllamaExe -ArgumentList @('list') -StdOutPath $outFile -StdErrPath $errFile
     $text = ''
     if (Test-Path -LiteralPath $outFile) { $text = [System.IO.File]::ReadAllText($outFile) }
-    $text = $text.Replace([char]0, '')
+    $text = $text.Replace(([string][char]0), '')
     Write-LumiLog $text
     Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    if (-not $proc.HasExited) { return $false }
     if ($proc.ExitCode -ne 0) { return $false }
     foreach ($line in ($text -split "`n")) {
-        $trimmed = $line.Trim().Trim([char]0xFEFF)
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -gt 0 -and [int][char]$trimmed[0] -eq 0xFEFF) { $trimmed = $trimmed.Substring(1) }
         if ($trimmed.ToLower().StartsWith($Model.ToLower())) { return $true }
     }
     return $false
