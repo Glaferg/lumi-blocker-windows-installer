@@ -79,18 +79,29 @@ function Save-LumiShot {
 }
 
 function Set-LumiStep {
-    param([string]$Text, [string]$Detail, [string]$ShotName)
-    Write-LumiLog ('STEP ' + $Text)
+    param([int]$Number, [string]$Text, [string]$Detail, [string]$ShotName)
+    $label = 'Step ' + $Number + ' of 5'
+    Write-LumiLog ('STEP ' + $label + ' ' + $Text)
     $frame = @{
         Phase = 'working'
+        StepLabel = $label
         Step = $Text
         Detail = $Detail
         HappyOpacity = 0
         ReadyOpacity = 0
         TextOpacity = 0
     }
+    $script:LumiStepFrame = $frame
     if (-not $Silent -and $script:LumiForm) { Update-LumiForm -Frame $frame }
     if ($ShotName) { Save-LumiShot -Name $ShotName -Frame $frame }
+}
+
+function Update-LumiStepDetail {
+    param([string]$Detail)
+    if (-not $script:LumiStepFrame) { return }
+    $script:LumiStepFrame.Detail = $Detail
+    if ($Silent -or -not $script:LumiForm) { return }
+    Update-LumiForm -Frame $script:LumiStepFrame
 }
 
 function Publish-LumiResult {
@@ -139,14 +150,17 @@ function Get-FriendlyMessage {
 
 function Show-LumiTrouble {
     param([string]$Message, [string]$ShotName)
+    $hint = Get-LumiErrorHint
     $fading = @{
         Phase = 'error'
         Message = $Message
+        ErrorHint = $hint
         ErrorOpacity = 0.45
     }
     $settled = @{
         Phase = 'error'
         Message = $Message
+        ErrorHint = $hint
         ErrorOpacity = 1
     }
     Save-LumiShot -Name ($ShotName + '-fade') -Frame $fading
@@ -156,7 +170,7 @@ function Show-LumiTrouble {
     while ($watch.Elapsed.TotalSeconds -lt 1 -and -not $script:UiState.Closed) {
         $amount = $watch.Elapsed.TotalSeconds
         if ($amount -gt 1) { $amount = 1 }
-        Update-LumiForm -Frame @{ Phase = 'error'; Message = $Message; ErrorOpacity = $amount }
+        Update-LumiForm -Frame @{ Phase = 'error'; Message = $Message; ErrorHint = $hint; ErrorOpacity = $amount }
         Start-Sleep -Milliseconds 40
     }
     if (-not $script:UiState.Closed) {
@@ -180,8 +194,9 @@ function Install-LumiShortcuts {
     $shell = New-Object -ComObject WScript.Shell
     $setup = $shell.CreateShortcut((Join-Path $programs 'Lumi Setup.lnk'))
     $setup.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $setup.Arguments = '-NoProfile -ExecutionPolicy Bypass -STA -File "' + (Join-Path $Root 'Install-Lumi.ps1') + '" -InstallRoot "' + $Root + '"'
+    $setup.Arguments = '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -STA -File "' + (Join-Path $Root 'Install-Lumi.ps1') + '" -InstallRoot "' + $Root + '"'
     $setup.WorkingDirectory = $Root
+    $setup.WindowStyle = 7
     $setup.Description = 'Set up Lumi'
     $setup.Save()
     $remove = $shell.CreateShortcut((Join-Path $programs 'Remove Lumi.lnk'))
@@ -268,13 +283,10 @@ function Invoke-LumiSetup {
         $state['firefox'] = [string]$firefox.Status
         Write-LumiLog ('firefox ' + $firefox.Status)
         $warnings = New-Object System.Collections.Generic.List[string]
-        $detail = $messages.StepShortcut
         if ($firefox.Status -eq 'missing') {
             $warnings.Add($messages.FirefoxMissing)
-            $detail = $messages.FirefoxMissing
         } elseif ($firefox.Status -eq 'older') {
             $warnings.Add($messages.FirefoxOlder)
-            $detail = $messages.FirefoxOlder
         }
 
         $ids = New-Object 'System.Collections.Generic.List[string]'
@@ -295,7 +307,7 @@ function Invoke-LumiSetup {
         Write-LumiNativeManifest -ManifestPath $manifestPath -HostName $product.nativeHostName -ExePath $helperPath -ExtensionIds @($ids.ToArray())
         Register-LumiNativeHost -HostName $product.nativeHostName -ManifestPath $manifestPath
         try { Install-LumiShortcuts -Root $InstallRoot } catch { Write-LumiLog 'shortcut skipped' }
-        Set-LumiStep -Text $messages.StepSave -Detail $detail -ShotName '00-saving'
+        Set-LumiStep -Number 1 -Text $messages.StepSave -Detail '' -ShotName '00-saving'
         Write-LumiJsonFile -Object $state -Path $statePath
 
         if (-not ($state.ContainsKey('originsSaved') -and $state['originsSaved'])) {
@@ -316,15 +328,21 @@ function Invoke-LumiSetup {
         $env:LUMI_OLLAMA_DIR = $OllamaProgramDir
         $state['ollamaProgramDir'] = $OllamaProgramDir
         $ollamaExe = Join-Path $OllamaProgramDir 'ollama.exe'
+        Set-LumiStep -Number 2 -Text $messages.StepOllamaCheck -Detail '' -ShotName '02-downloading-ollama'
         if (Test-Path -LiteralPath $ollamaExe) {
-            Set-LumiStep -Text $messages.StepOllamaReady -Detail $detail -ShotName '02-downloading-ollama'
+            Write-LumiLog 'Ollama is already on this computer'
             if (-not $state.ContainsKey('ollamaInstalledByLumi')) { $state['ollamaInstalledByLumi'] = $false }
         } else {
-            Set-LumiStep -Text $messages.StepOllama -Detail 'This can take a while on a slow connection.' -ShotName '02-downloading-ollama'
+            Set-LumiStep -Number 2 -Text $messages.StepOllama -Detail (Get-LumiOllamaProgressText -Bytes 0 -Dot 0) -ShotName '02-downloading-ollama'
             $setupUrl = $OllamaSetupUrl
             if (-not $setupUrl) { $setupUrl = [string]$product.ollamaSetupUrl }
             $setupPath = Join-Path $InstallRoot 'cache\OllamaSetup.exe'
-            Save-RemoteFile -Url $setupUrl -Destination $setupPath
+            $script:LumiDotTick = 0
+            Save-RemoteFile -Url $setupUrl -Destination $setupPath -OnProgress {
+                param($bytes, $total)
+                $script:LumiDotTick = [int]$script:LumiDotTick + 1
+                Update-LumiStepDetail -Detail (Get-LumiOllamaProgressText -Bytes ([int64]$bytes) -Dot ([int]$script:LumiDotTick))
+            }
             if (-not $AllowUnsignedOllamaSetup) {
                 if (-not (Test-TrustedExecutable -Path $setupPath)) {
                     Remove-Item -LiteralPath $setupPath -Force -ErrorAction SilentlyContinue
@@ -338,20 +356,7 @@ function Invoke-LumiSetup {
         }
         Write-LumiJsonFile -Object $state -Path $statePath
 
-        $modelFailed = $false
-        if (Test-OllamaModelPresent -OllamaExe $ollamaExe -Model $chosenModel) {
-            Set-LumiStep -Text $messages.StepModelReady -Detail $detail -ShotName '03-downloading-model'
-        } else {
-            Set-LumiStep -Text $messages.StepModel -Detail $detail -ShotName '03-downloading-model'
-            $pullCode = Invoke-LoggedProcess -FilePath $ollamaExe -ArgumentList @('pull', $chosenModel)
-            if ($pullCode -ne 0) {
-                $modelFailed = $true
-                Set-LumiSetting -InstallRoot $InstallRoot -Name 'mode' -Value 'balanced'
-                Write-LumiLog 'model failed'
-            }
-        }
-
-        Set-LumiStep -Text $messages.StepBackend -Detail $detail -ShotName '04-starting-backend'
+        Set-LumiStep -Number 3 -Text $messages.StepStart -Detail '' -ShotName '04-starting-backend'
         $state['backendPid'] = Start-OllamaBackend -ExePath $ollamaExe
         Write-LumiLog ('backend ' + $state['backendPid'])
         $cors = Test-OllamaCorsAllowed -BaseUrl ([string]$product.ollamaBaseUrl)
@@ -359,22 +364,54 @@ function Invoke-LumiSetup {
         if (-not $cors) { $warnings.Add($messages.BackendAlreadyOpen) }
         Write-LumiJsonFile -Object $state -Path $statePath
 
+        $modelLabel = $messages.StepModel + ' (' + $chosenModel + ')'
+        $modelFailed = $false
+        if (Test-OllamaModelPresent -OllamaExe $ollamaExe -Model $chosenModel) {
+            Set-LumiStep -Number 4 -Text $modelLabel -Detail 'Already on this computer' -ShotName '03-downloading-model'
+            Write-LumiLog 'Model is already on this computer'
+        } else {
+            Set-LumiStep -Number 4 -Text $modelLabel -Detail (Get-LumiGemmaProgressText -Percent -1 -Dot 0) -ShotName '03-downloading-model'
+            $pullCode = Invoke-OllamaPull -FilePath $ollamaExe -Model $chosenModel -OnProgress {
+                param($progressText)
+                Update-LumiStepDetail -Detail ([string]$progressText)
+            }
+            if ($pullCode -ne 0) {
+                $modelFailed = $true
+                Set-LumiSetting -InstallRoot $InstallRoot -Name 'mode' -Value 'balanced'
+                Write-LumiLog 'model failed'
+            }
+        }
+
+        if (-not $modelFailed) {
+            Set-LumiStep -Number 5 -Text $messages.StepTalk -Detail '' -ShotName '08-checking-gemma'
+            $shown = Test-OllamaModelShown -BaseUrl ([string]$product.ollamaBaseUrl) -Model $chosenModel
+            $state['modelShown'] = [bool]$shown
+            Write-LumiJsonFile -Object $state -Path $statePath
+            if (-not $shown) {
+                $modelFailed = $true
+                Set-LumiSetting -InstallRoot $InstallRoot -Name 'mode' -Value 'balanced'
+                Write-LumiLog 'model show failed'
+            }
+        }
+
         if ($modelFailed) {
             Show-LumiTrouble -Message $messages.ModelFailed -ShotName 'error'
             Publish-LumiResult -Ok $false -Code 1 -Message $messages.ModelFailed -Warnings @($warnings.ToArray())
             return 1
         }
 
+        $happyNote = $messages.StepShortcut
+        if ($warnings.Count -gt 0) { $happyNote = $messages.StepShortcut + "`n" + [string]$warnings[0] }
         $hold = [double]$product.completionHoldSeconds
         $fade = [double]$product.completionFadeSeconds
         $complete = Get-LumiCompletionFrame -ElapsedSeconds 0 -HoldSeconds $hold -FadeSeconds $fade
-        $complete['Detail'] = $detail
+        $complete['Detail'] = $happyNote
         Save-LumiShot -Name '05-complete' -Frame $complete
         $midpoint = Get-LumiCompletionFrame -ElapsedSeconds ($hold + ($fade / 2)) -HoldSeconds $hold -FadeSeconds $fade
-        $midpoint['Detail'] = $detail
+        $midpoint['Detail'] = $messages.StepShortcut
         Save-LumiShot -Name '06-fade' -Frame $midpoint
         $ready = Get-LumiCompletionFrame -ElapsedSeconds ($hold + $fade) -HoldSeconds $hold -FadeSeconds $fade
-        $ready['Detail'] = ''
+        $ready['Detail'] = $messages.StepShortcut
         $ready['ReadyText'] = $messages.ReadyText
         Save-LumiShot -Name '07-ready' -Frame $ready
 
@@ -382,7 +419,8 @@ function Invoke-LumiSetup {
             $watch = [System.Diagnostics.Stopwatch]::StartNew()
             while ($watch.Elapsed.TotalSeconds -lt ($hold + $fade) -and -not $script:UiState.Closed) {
                 $live = Get-LumiCompletionFrame -ElapsedSeconds $watch.Elapsed.TotalSeconds -HoldSeconds $hold -FadeSeconds $fade
-                $live['Detail'] = $detail
+                if ($watch.Elapsed.TotalSeconds -lt $hold) { $live['Detail'] = $happyNote }
+                else { $live['Detail'] = $messages.StepShortcut }
                 $live['ReadyText'] = $messages.ReadyText
                 Update-LumiForm -Frame $live
                 Start-Sleep -Milliseconds 40

@@ -159,8 +159,11 @@ function Paint-LumiFrame {
 
         if ($phase -eq 'working') {
             Draw-LumiGlyph -Graphics $Graphics -CenterX $layout.CharacterX -CenterY $layout.CharacterY -Radius $layout.CharacterRadius -Fill $sage -Ink $bg -Mood 'calm'
-            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Step) -Font $stepFont -Color $cream -X 80 -Y 360 -Width 800 -Height 70 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
-            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Detail) -Font $smallFont -Color $sage -X 120 -Y 430 -Width 720 -Height 70 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
+            $kicker = ''
+            if ($Frame.ContainsKey('StepLabel')) { $kicker = [string]$Frame.StepLabel }
+            Draw-LumiString -Graphics $Graphics -Text $kicker -Font $smallFont -Color $sage -X 80 -Y 324 -Width 800 -Height 32 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
+            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Step) -Font $stepFont -Color $cream -X 80 -Y 356 -Width 800 -Height 64 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
+            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Detail) -Font $smallFont -Color $sage -X 80 -Y 428 -Width 800 -Height 80 -Opacity 1 -Alignment ([System.Drawing.StringAlignment]::Center)
             return
         }
         if ($phase -eq 'error') {
@@ -170,7 +173,10 @@ function Paint-LumiFrame {
             if ($fadeIn -gt 1) { $fadeIn = 1 }
             $soft = ConvertTo-LumiColor -Hex $colors.sage -Opacity $fadeIn
             Draw-LumiGlyph -Graphics $Graphics -CenterX $layout.CharacterX -CenterY $layout.CharacterY -Radius $layout.CharacterRadius -Fill $soft -Ink $bg -Mood 'gentle'
-            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Message) -Font $bodyFont -Color $cream -X 80 -Y 350 -Width 800 -Height 120 -Opacity $fadeIn -Alignment ([System.Drawing.StringAlignment]::Center)
+            Draw-LumiString -Graphics $Graphics -Text ([string]$Frame.Message) -Font $bodyFont -Color $cream -X 80 -Y 340 -Width 800 -Height 100 -Opacity $fadeIn -Alignment ([System.Drawing.StringAlignment]::Center)
+            $hint = ''
+            if ($Frame.ContainsKey('ErrorHint')) { $hint = [string]$Frame.ErrorHint }
+            Draw-LumiString -Graphics $Graphics -Text $hint -Font $smallFont -Color $sage -X 70 -Y 455 -Width 820 -Height 80 -Opacity ($fadeIn * 0.8) -Alignment ([System.Drawing.StringAlignment]::Center)
             return
         }
 
@@ -208,7 +214,12 @@ function Paint-LumiFrame {
         }
         $readyText = $messages.ReadyText
         if ($Frame.ContainsKey('ReadyText') -and $Frame.ReadyText) { $readyText = [string]$Frame.ReadyText }
-        Draw-LumiString -Graphics $Graphics -Text $readyText -Font $stepFont -Color $readyColor -X 70 -Y 390 -Width 820 -Height 90 -Opacity $textOpacity -Alignment ([System.Drawing.StringAlignment]::Center)
+        Draw-LumiString -Graphics $Graphics -Text $readyText -Font $stepFont -Color $readyColor -X 70 -Y 370 -Width 820 -Height 80 -Opacity $textOpacity -Alignment ([System.Drawing.StringAlignment]::Center)
+        if ($phase -eq 'ready') {
+            $foot = ''
+            if ($Frame.ContainsKey('Detail')) { $foot = [string]$Frame.Detail }
+            Draw-LumiString -Graphics $Graphics -Text $foot -Font $smallFont -Color $sage -X 80 -Y 468 -Width 800 -Height 70 -Opacity $textOpacity -Alignment ([System.Drawing.StringAlignment]::Center)
+        }
     } finally {
         $titleFont.Dispose()
         $stepFont.Dispose()

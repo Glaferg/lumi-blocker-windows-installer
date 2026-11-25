@@ -32,7 +32,7 @@ jobs:
           $zip = [System.IO.Compression.ZipFile]::OpenRead((Join-Path (Get-Location) 'dist\LumiSetup-win.zip'))
           try {
             $names = @($zip.Entries | ForEach-Object { $_.FullName.Replace('/', '\') })
-            foreach ($needed in @('LumiHelper.exe', 'Install Lumi.cmd', 'Install-Lumi.ps1', 'lib\Ollama.ps1', 'lib\Origins.ps1', 'share\product.json', 'share\consent.txt', 'share\default-settings.json')) {
+            foreach ($needed in @('LumiHelper.exe', 'Install Lumi.cmd', 'Launch-Lumi.vbs', 'Install-Lumi.ps1', 'lib\Ollama.ps1', 'lib\Origins.ps1', 'share\product.json', 'share\consent.txt', 'share\default-settings.json')) {
               if ($names -notcontains $needed) { throw ('Setup zip is missing ' + $needed) }
             }
           } finally {

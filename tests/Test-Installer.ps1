@@ -340,7 +340,7 @@ try {
     if ($modelState.ContainsKey('backendPid')) { $cleanupPids.Add([int]$modelState['backendPid']) }
     Assert-Pixel -Path (Join-Path $modelShots 'error.png') -X $layout.CharacterX -Y $layout.CharacterY -Red 163 -Green 190 -Blue 140 -Message 'Gentle Lumi'
     $modelLog = [System.IO.File]::ReadAllText((Join-Path $modelRoot 'logs\install.log'))
-    Assert-True ($modelLog.Contains('Downloading Model')) 'Model download step was skipped.'
+    Assert-True ($modelLog.Contains('Getting Gemma ready')) 'Model download step was skipped.'
     Assert-True ($modelRun.Stdout -notmatch 'fake pull') 'Model error text included program output.'
     $modelRemove = Invoke-LumiChild -InstallerArgs @('-Silent', '-Uninstall', '-InstallRoot', $modelRoot)
     Assert-True ($modelRemove.ExitCode -eq 0) 'Remove failed after a model problem.'
@@ -396,9 +396,17 @@ try {
     $origins = [Environment]::GetEnvironmentVariable('OLLAMA_ORIGINS', 'User')
     Assert-True ($origins -eq (Merge-OllamaOrigins -Current $savedOrigins -Required 'moz-extension://*')) 'Firefox was not allowed to reach the model.'
     $log = [System.IO.File]::ReadAllText((Join-Path $root 'logs\install.log'))
-    Assert-True ($log.Contains('STEP Downloading Ollama App...')) 'Ollama step was not recorded.'
-    Assert-True ($log.Contains('STEP Downloading Model')) 'Model step was not recorded.'
-    Assert-True ($log.Contains('STEP Starting Application Backend')) 'Backend step was not recorded.'
+    Assert-True ($log.Contains('Step 1 of 5')) 'Step 1 was not recorded.'
+    Assert-True ($log.Contains('Saving Lumi on this computer')) 'Save step was not recorded.'
+    Assert-True ($log.Contains('Step 2 of 5')) 'Step 2 was not recorded.'
+    Assert-True ($log.Contains('Downloading Ollama')) 'Ollama step was not recorded.'
+    Assert-True ($log.Contains('Step 3 of 5')) 'Step 3 was not recorded.'
+    Assert-True ($log.Contains('Starting Ollama')) 'Start step was not recorded.'
+    Assert-True ($log.Contains('Step 4 of 5')) 'Step 4 was not recorded.'
+    Assert-True ($log.Contains('Getting Gemma ready')) 'Model step was not recorded.'
+    Assert-True ($log.Contains('Step 5 of 5')) 'Step 5 was not recorded.'
+    Assert-True ($log.Contains('Checking that Lumi can talk to Gemma')) 'The model check step was not recorded.'
+    Assert-True ($log.Contains('api/show')) 'The model check did not run.'
     Assert-True ($log.Contains('VERYSILENT')) 'Program output was not kept in the log.'
     Assert-True ($log.Contains('pull lumi-ci-tiny')) 'Model download output was not kept in the log.'
     Assert-True ((Get-Content -LiteralPath (Join-Path $ollamaDir 'setup-count.txt') -Raw).Trim() -eq '1') 'Ollama setup did not run once.'
@@ -460,7 +468,8 @@ try {
     $rerunLog = [System.IO.File]::ReadAllText((Join-Path $root 'logs\install.log'))
     $lastRun = $rerunLog.Substring($rerunLog.LastIndexOf('RUN BEGIN'))
     Assert-True ($lastRun.Contains('Model is already on this computer')) 'A second run downloaded the model again.'
-    Assert-True ($lastRun.Contains('STEP Starting Application Backend')) 'A second run did not restart the background program.'
+    Assert-True ($lastRun.Contains('Starting Ollama')) 'A second run did not restart the background program.'
+    Assert-True ($lastRun.Contains('api/show')) 'A second run skipped the model check.'
     Assert-True (Test-OllamaCorsAllowed -BaseUrl 'http://127.0.0.1:11434') 'Firefox was not allowed to reach the model after a restart.'
     Assert-True ($lastRun.Contains('Ollama is already on this computer')) 'A second run downloaded Ollama again.'
     $kept = Send-NativeMessage -Exe $helperPath -Json '{"action":"getSettings"}'

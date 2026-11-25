@@ -25,11 +25,23 @@ $cmd = Join-Path $dist 'Install Lumi.cmd'
 $lines = @(
     '@echo off',
     'cd /d "%~dp0"',
-    'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -LiteralPath . -Recurse -File | Unblock-File"',
-    'powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0Install-Lumi.ps1" %*',
+    'wscript.exe //nologo "%~dp0Launch-Lumi.vbs"',
+    'exit /b 0',
     ''
 )
 [System.IO.File]::WriteAllText($cmd, ($lines -join "`r`n"))
+
+$vbs = Join-Path $dist 'Launch-Lumi.vbs'
+$vbsLines = @(
+    'Set shell = CreateObject("WScript.Shell")',
+    'Set fso = CreateObject("Scripting.FileSystemObject")',
+    'folder = fso.GetParentFolderName(WScript.ScriptFullName)',
+    'folder = Replace(folder, "''", "''''")',
+    'command = "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -STA -Command ""$ErrorActionPreference=''Continue''; Set-Location -LiteralPath ''" & folder & "''; Get-ChildItem -LiteralPath . -Recurse -File | Unblock-File; & ''.\Install-Lumi.ps1''"""',
+    'shell.Run command, 0, False',
+    ''
+)
+[System.IO.File]::WriteAllText($vbs, ($vbsLines -join "`r`n"))
 
 $zip = Join-Path $repo 'dist\LumiSetup-win.zip'
 if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }

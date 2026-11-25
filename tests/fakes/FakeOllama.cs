@@ -132,22 +132,63 @@ class Program
                     header = Encoding.ASCII.GetString(raw.ToArray());
                     if (header.Length > 65536) break;
                 }
+                int headerEnd = header.IndexOf("\r\n\r\n");
+                string head = headerEnd >= 0 ? header.Substring(0, headerEnd) : header;
+                string requestBody = headerEnd >= 0 ? header.Substring(headerEnd + 4) : "";
+                string[] lines = head.Split(new string[] { "\r\n" }, StringSplitOptions.None);
                 string requestOrigin = "";
-                string[] lines = header.Split(new string[] { "\r\n" }, StringSplitOptions.None);
+                string path = "";
+                int contentLength = 0;
+                if (lines.Length > 0)
+                {
+                    string[] requestParts = lines[0].Split(' ');
+                    if (requestParts.Length > 1) path = requestParts[1];
+                }
                 for (int i = 0; i < lines.Length; i++)
                 {
                     if (lines[i].StartsWith("Origin:", StringComparison.OrdinalIgnoreCase))
                     {
                         requestOrigin = lines[i].Substring(7).Trim();
                     }
+                    if (lines[i].StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int.TryParse(lines[i].Substring(15).Trim(), out contentLength);
+                    }
+                }
+                while (requestBody.Length < contentLength)
+                {
+                    int n = stream.Read(buf, 0, buf.Length);
+                    if (n <= 0) break;
+                    requestBody += Encoding.ASCII.GetString(buf, 0, n);
                 }
                 string allowed = Environment.GetEnvironmentVariable("OLLAMA_ORIGINS") ?? "";
-                bool ok = OriginAllowed(requestOrigin, allowed);
-                string body = ok ? "{\"version\":\"fake\"}" : "{\"error\":\"origin\"}";
+                bool show = path.IndexOf("/api/show", StringComparison.OrdinalIgnoreCase) >= 0;
+                int status = 200;
+                string body;
+                string allowOrigin = "";
+                if (show)
+                {
+                    string model = ExtractJsonString(requestBody, "model");
+                    if (string.IsNullOrEmpty(model)) model = ExtractJsonString(requestBody, "name");
+                    string folder = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
+                    string marker = Path.Combine(folder, "models", model + ".ok");
+                    bool found = !string.IsNullOrEmpty(model) && File.Exists(marker);
+                    status = found ? 200 : 404;
+                    body = found
+                        ? "{\"model\":\"" + model.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\",\"details\":{\"family\":\"gemma\"}}"
+                        : "{\"error\":\"not ready\"}";
+                }
+                else
+                {
+                    bool ok = OriginAllowed(requestOrigin, allowed);
+                    status = ok ? 200 : 403;
+                    body = ok ? "{\"version\":\"fake\"}" : "{\"error\":\"origin\"}";
+                    if (ok) allowOrigin = requestOrigin;
+                }
                 byte[] payload = Encoding.UTF8.GetBytes(body);
                 StringBuilder response = new StringBuilder();
-                response.Append(ok ? "HTTP/1.1 200 OK\r\n" : "HTTP/1.1 403 Forbidden\r\n");
-                if (ok) response.Append("Access-Control-Allow-Origin: ").Append(requestOrigin).Append("\r\n");
+                response.Append("HTTP/1.1 ").Append(status).Append(status == 200 ? " OK\r\n" : " Result\r\n");
+                if (allowOrigin.Length > 0) response.Append("Access-Control-Allow-Origin: ").Append(allowOrigin).Append("\r\n");
                 response.Append("Content-Length: ").Append(payload.Length).Append("\r\n");
                 response.Append("Connection: close\r\n\r\n");
                 byte[] prefix = Encoding.ASCII.GetBytes(response.ToString());
@@ -163,6 +204,21 @@ class Program
                 if (client != null) client.Close();
             }
         }
+    }
+
+    static string ExtractJsonString(string body, string key)
+    {
+        if (string.IsNullOrEmpty(body) || string.IsNullOrEmpty(key)) return "";
+        string token = "\"" + key + "\"";
+        int at = body.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) return "";
+        int colon = body.IndexOf(':', at + token.Length);
+        if (colon < 0) return "";
+        int open = body.IndexOf('"', colon + 1);
+        if (open < 0) return "";
+        int close = body.IndexOf('"', open + 1);
+        if (close < 0) return "";
+        return body.Substring(open + 1, close - open - 1);
     }
 
     static bool OriginAllowed(string origin, string allowed)

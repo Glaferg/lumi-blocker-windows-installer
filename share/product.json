@@ -13,9 +13,12 @@
   "completionFadeSeconds": 2,
   "readyText": "Close this tab and let's get started!",
   "steps": {
-    "ollamaApp": "Downloading Ollama App...",
-    "model": "Downloading Model",
-    "backend": "Starting Application Backend"
+    "save": "Saving Lumi on this computer",
+    "ollamaCheck": "Checking Ollama",
+    "ollamaApp": "Downloading Ollama",
+    "start": "Starting Ollama",
+    "model": "Getting Gemma ready",
+    "talk": "Checking that Lumi can talk to Gemma"
   },
   "colors": {
     "background": "#1E222A",

@@ -30,15 +30,21 @@ Assert-True ($notice.Contains('WaitForExit(1000)')) 'The environment notice can 
 Assert-True ([int]$product.completionHoldSeconds -eq 4) 'Completion hold is not 4 seconds.'
 Assert-True ([int]$product.completionFadeSeconds -eq 2) 'Completion fade is not 2 seconds.'
 Assert-True ($product.readyText -eq "Close this tab and let's get started!") 'Ready text changed.'
-Assert-True ($product.steps.ollamaApp -eq 'Downloading Ollama App...') 'Ollama step text changed.'
-Assert-True ($product.steps.model -eq 'Downloading Model') 'Model step text changed.'
-Assert-True ($product.steps.backend -eq 'Starting Application Backend') 'Backend step text changed.'
+Assert-True ($product.steps.save -eq 'Saving Lumi on this computer') 'Save step text changed.'
+Assert-True ($product.steps.ollamaCheck -eq 'Checking Ollama') 'Ollama check text changed.'
+Assert-True ($product.steps.ollamaApp -eq 'Downloading Ollama') 'Ollama step text changed.'
+Assert-True ($product.steps.start -eq 'Starting Ollama') 'Start step text changed.'
+Assert-True ($product.steps.model -eq 'Getting Gemma ready') 'Model step text changed.'
+Assert-True ($product.steps.talk -eq 'Checking that Lumi can talk to Gemma') 'Talk step text changed.'
 Assert-True ($product.ollamaOrigin -eq 'moz-extension://*') 'Firefox origin changed.'
 Assert-True ($product.nativeHostName -eq 'lumi_focus') 'Helper name changed.'
 
 $messages = Get-LumiMessages -Product $product
 Assert-True ($messages.ReadyText -eq "Close this tab and let's get started!") 'Ready message changed.'
-Assert-True ($messages.StepOllama -eq 'Downloading Ollama App...') 'Ollama message changed.'
+Assert-True ($messages.StepSave -eq 'Saving Lumi on this computer') 'Save message changed.'
+Assert-True ($messages.StepOllama -eq 'Downloading Ollama') 'Ollama message changed.'
+Assert-True ($messages.StepTalk -eq 'Checking that Lumi can talk to Gemma') 'Talk message changed.'
+Assert-True ($messages.ErrorHint -match 'Lumi[\\/]logs[\\/]install\.log') 'Error hint does not point at the install log.'
 
 $banned = @('System Override', 'Diagnostic', 'Recalibrating', 'Press Enter')
 $scanFiles = @(
@@ -122,6 +128,19 @@ $bringBack = [System.IO.File]::ReadAllText((Join-Path $repo 'share\bring-a-tab-b
 Assert-True ($bringBack.Contains('Ctrl+Alt+S')) 'Shortcut note does not mention Ctrl+Alt+S.'
 Assert-True ($bringBack.Contains('Ctrl+Shift+T')) 'Shortcut note does not mention Firefox''s own shortcut.'
 
+$uiText = [System.IO.File]::ReadAllText((Join-Path $repo 'src\installer\lib\Ui.ps1'))
+Assert-True ($uiText.Contains('ErrorHint')) 'The error screen does not show the log.'
+Assert-True ($uiText.Contains('StepLabel')) 'Numbered steps are not drawn.'
+$ollamaText = [System.IO.File]::ReadAllText((Join-Path $lib 'Ollama.ps1'))
+Assert-True ($ollamaText.Contains('/api/show')) 'The model check is missing.'
+Assert-True ($ollamaText.Contains('Downloading Ollama...')) 'Ollama progress text is missing.'
+Assert-True ($ollamaText.Contains('Downloading Gemma...')) 'Gemma progress text is missing.'
+Assert-True ($ollamaText.Contains('DoEvents')) 'The window can freeze during a download.'
+Assert-True ($ollamaText.Contains('BeginInvoke')) 'Downloads still block the window.'
+$buildText = [System.IO.File]::ReadAllText((Join-Path $repo 'build\Build-Installer.ps1'))
+Assert-True ($buildText.Contains('-WindowStyle Hidden')) 'The installer console stays visible.'
+Assert-True ($buildText.Contains('wscript.exe')) 'The installer does not hide its console.'
+Assert-True ($buildText.Contains('shell.Run command, 0, False')) 'The hidden launcher can leave a console behind.'
 $installerText = [System.IO.File]::ReadAllText((Join-Path $repo 'src\installer\Install-Lumi.ps1'))
 Assert-True (-not $installerText.Contains('RunAs')) 'Installer asks for administrator.'
 Assert-True (-not $installerText.Contains('requireAdministrator')) 'Installer requires administrator.'

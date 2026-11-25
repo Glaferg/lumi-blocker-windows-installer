@@ -1,26 +1,44 @@
+function Get-LumiErrorHint {
+    $path = '%LOCALAPPDATA%\Lumi\logs\install.log'
+    if ($script:LumiLogPath) {
+        $path = [string]$script:LumiLogPath
+    } elseif ($env:LOCALAPPDATA) {
+        $path = Join-Path $env:LOCALAPPDATA 'Lumi\logs\install.log'
+    }
+    return $path
+}
+
 function Get-LumiMessages {
     param($Product)
     $ready = 'Close this tab and let''s get started!'
     if ($Product -and $Product.readyText) { $ready = [string]$Product.readyText }
-    $ollamaStep = 'Downloading Ollama App...'
-    $modelStep = 'Downloading Model'
-    $backendStep = 'Starting Application Backend'
+    $saveStep = 'Saving Lumi on this computer'
+    $checkStep = 'Checking Ollama'
+    $ollamaStep = 'Downloading Ollama'
+    $startStep = 'Starting Ollama'
+    $modelStep = 'Getting Gemma ready'
+    $talkStep = 'Checking that Lumi can talk to Gemma'
     if ($Product -and $Product.steps) {
+        if ($Product.steps.save) { $saveStep = [string]$Product.steps.save }
+        if ($Product.steps.ollamaCheck) { $checkStep = [string]$Product.steps.ollamaCheck }
         if ($Product.steps.ollamaApp) { $ollamaStep = [string]$Product.steps.ollamaApp }
+        if ($Product.steps.start) { $startStep = [string]$Product.steps.start }
         if ($Product.steps.model) { $modelStep = [string]$Product.steps.model }
-        if ($Product.steps.backend) { $backendStep = [string]$Product.steps.backend }
+        if ($Product.steps.talk) { $talkStep = [string]$Product.steps.talk }
     }
     return @{
         ReadyText = $ready
+        StepSave = $saveStep
+        StepOllamaCheck = $checkStep
         StepOllama = $ollamaStep
+        StepStart = $startStep
         StepModel = $modelStep
-        StepBackend = $backendStep
-        StepSave = 'Saving Lumi on this computer...'
-        StepFirefox = 'Checking Firefox...'
+        StepTalk = $talkStep
+        StepFirefox = 'Checking Firefox'
         StepShortcut = 'Press Ctrl+Alt+S to bring back the last tab.'
         StepModelReady = 'Model is already on this computer'
         StepOllamaReady = 'Ollama is already on this computer'
-        StepBackendReady = 'Application backend is already running'
+        StepBackendReady = 'Ollama is already running'
         HeadingComplete = 'Installation complete'
         Success = 'Lumi is ready on this computer.'
         Declined = 'Lumi was not installed.'
@@ -36,7 +54,7 @@ function Get-LumiMessages {
         RemoveLocked = 'Close Firefox, then run Remove Lumi again.'
         Continue = 'Continue'
         NotNow = 'Not now'
-        ErrorHint = ''
+        ErrorHint = (Get-LumiErrorHint)
     }
 }
 
