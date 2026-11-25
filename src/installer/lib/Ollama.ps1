@@ -148,12 +148,9 @@ function Invoke-LoggedProcess {
     $outFile = Join-Path $logDir ($stamp + '.out.txt')
     $errFile = Join-Path $logDir ($stamp + '.err.txt')
     Write-LumiLog ('run ' + $FilePath + ' ' + ($ArgumentList -join ' '))
-    $proc = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -PassThru -WindowStyle Hidden -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-    while ($proc -and -not $proc.HasExited) {
-        Send-LumiUiPulse
-        Start-Sleep -Milliseconds 100
-    }
-    if ($proc) { try { $proc.WaitForExit() } catch {} }
+    # WindowStyle and redirected output cannot be combined here. PowerShell
+    # would keep the console and leave the output files empty.
+    $proc = Start-LumiHiddenProcess -FilePath $FilePath -ArgumentList $ArgumentList -StdOutPath $outFile -StdErrPath $errFile
     if (Test-Path -LiteralPath $outFile) {
         Write-LumiLog ([System.IO.File]::ReadAllText($outFile))
         Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
@@ -387,6 +384,81 @@ function Test-OllamaModelShown {
     return [bool]$sync.Ok
 }
 
+function Start-LumiHiddenProcess {
+    param(
+        [string]$FilePath,
+        [string[]]$ArgumentList,
+        [string]$StdOutPath,
+        [string]$StdErrPath
+    )
+    if (-not ('LumiLinePump' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System.Collections.Concurrent;
+using System.IO;
+using System.Threading;
+public class LumiLinePump {
+    public static Thread Start(StreamReader reader, ConcurrentQueue<string> lines) {
+        Thread thread = new Thread(() => Pump(reader, lines));
+        thread.IsBackground = true;
+        thread.Start();
+        return thread;
+    }
+    static void Pump(StreamReader reader, ConcurrentQueue<string> lines) {
+        try {
+            string line;
+            while ((line = reader.ReadLine()) != null) {
+                lines.Enqueue(line);
+            }
+        } catch (System.Exception) {}
+    }
+}
+'@
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $quoted = New-Object System.Collections.Generic.List[string]
+    foreach ($arg in @($ArgumentList)) {
+        if ($null -eq $arg) { continue }
+        $text = [string]$arg
+        if ($text.Contains(' ') -or $text.Contains('"')) {
+            $quoted.Add('"' + ($text.Replace('"', '\"')) + '"')
+        } else {
+            $quoted.Add($text)
+        }
+    }
+    $psi.Arguments = ($quoted -join ' ')
+    $proc = New-Object System.Diagnostics.Process
+    $proc.StartInfo = $psi
+    [void]$proc.Start()
+    $outLines = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
+    $errLines = New-Object 'System.Collections.Concurrent.ConcurrentQueue[string]'
+    $outThread = [LumiLinePump]::Start($proc.StandardOutput, $outLines)
+    $errThread = [LumiLinePump]::Start($proc.StandardError, $errLines)
+    $idle = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        $running = (-not $proc.HasExited) -or $outThread.IsAlive -or $errThread.IsAlive
+        if (-not $running) { break }
+        if ($proc.HasExited -and $idle.Elapsed.TotalSeconds -gt 3) { break }
+        if (-not $proc.HasExited) { $idle.Restart() }
+        Send-LumiUiPulse
+        Start-Sleep -Milliseconds 100
+    }
+    try { $proc.WaitForExit() } catch {}
+    $outKept = New-Object System.Collections.Generic.List[string]
+    $errKept = New-Object System.Collections.Generic.List[string]
+    $line = ''
+    while ($outLines.TryDequeue([ref]$line)) { $outKept.Add($line) }
+    while ($errLines.TryDequeue([ref]$line)) { $errKept.Add($line) }
+    if ($StdOutPath) { [System.IO.File]::WriteAllText($StdOutPath, ($outKept -join "`n")) }
+    if ($StdErrPath) { [System.IO.File]::WriteAllText($StdErrPath, ($errKept -join "`n")) }
+    return $proc
+}
+
 function Test-OllamaModelPresent {
     param(
         [string]$OllamaExe,
@@ -397,20 +469,16 @@ function Test-OllamaModelPresent {
     $stamp = [Guid]::NewGuid().ToString('n')
     $outFile = Join-Path $logDir ($stamp + '.list.txt')
     $errFile = Join-Path $logDir ($stamp + '.list.err.txt')
-    $proc = Start-Process -FilePath $OllamaExe -ArgumentList @('list') -PassThru -WindowStyle Hidden -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-    while ($proc -and -not $proc.HasExited) {
-        Send-LumiUiPulse
-        Start-Sleep -Milliseconds 100
-    }
-    if ($proc) { try { $proc.WaitForExit() } catch {} }
+    $proc = Start-LumiHiddenProcess -FilePath $OllamaExe -ArgumentList @('list') -StdOutPath $outFile -StdErrPath $errFile
     $text = ''
     if (Test-Path -LiteralPath $outFile) { $text = [System.IO.File]::ReadAllText($outFile) }
+    $text = $text.Replace([char]0, '')
     Write-LumiLog $text
     Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     if ($proc.ExitCode -ne 0) { return $false }
     foreach ($line in ($text -split "`n")) {
-        $trimmed = $line.Trim()
+        $trimmed = $line.Trim().Trim([char]0xFEFF)
         if ($trimmed.ToLower().StartsWith($Model.ToLower())) { return $true }
     }
     return $false
