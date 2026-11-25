@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "mode": "thorough",
+  "fallbackMode": "balanced",
+  "ollamaBaseUrl": "http://127.0.0.1:11434",
+  "model": "gemma3:4b",
+  "requestTimeoutSeconds": 25,
+  "closeDistractingTabs": true,
+  "reopenLastClosedShortcut": {
+    "windows": "Ctrl+Alt+S",
+    "mac": "Ctrl+Alt+S",
+    "linux": "Ctrl+Alt+S"
+  },
+  "lightKeepOpenAtOrBelow": 0.17,
+  "pageTextSentOffMachine": false,
+  "collectPersonalData": false
+}

@@ -1,0 +1,10 @@
+To bring back the last tab Lumi closed, press Ctrl+Alt+S.
+
+After Lumi Focus is installed in Firefox, that shortcut is the one Lumi asks Firefox to use. Firefox can also bring the last closed tab back with Ctrl+Shift+T, including a tab Lumi closed.
+
+If Ctrl+Alt+S does nothing, Firefox may already be using it while its developer tools are open. You can set it yourself:
+
+1. Open Firefox.
+2. Choose the menu button, then Add-ons and themes.
+3. Choose the gear, then Manage Extension Shortcuts.
+4. Next to "Reopen the last tab Lumi closed", set Ctrl+Alt+S.

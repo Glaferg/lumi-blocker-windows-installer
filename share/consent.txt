@@ -1,0 +1,7 @@
+Lumi can close tabs that pull your attention away. That stays on this computer.
+
+Thorough mode uses a model stored here to read the title of a page and decide. The page is not sent to Lumi or to anyone else.
+
+This setup downloads the model onto this computer. It needs a few gigabytes of free space.
+
+You can remove Lumi later. It only changes this Windows user, not other people on the computer.

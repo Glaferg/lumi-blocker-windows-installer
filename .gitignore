@@ -1,0 +1,4 @@
+dist/
+tests/out/
+*.zip
+.DS_Store
